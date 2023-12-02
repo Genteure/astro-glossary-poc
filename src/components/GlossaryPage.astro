@@ -1,0 +1,81 @@
+---
+import { getCollection, getEntry } from "astro:content";
+import { slug as githubSlug } from "github-slugger";
+import { slugToLocaleData, localizedSlug } from "../utils/slugs";
+
+const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
+// The docs entry for the current page, or `undefined` if the page is using fallback content.
+const entry = await getEntry("docs", slug);
+// The BCP-47 tag for the current page or fallback content's language.
+const pageLocale = entry ? slugToLocaleData(slug).locale || "en" : "en";
+
+const allTerms = await getCollection("glossary");
+
+const englishTerms = allTerms.filter((t) => t.slug.startsWith("en/"));
+const terms = Object.fromEntries(
+  allTerms
+    .filter((t) => t.slug.startsWith(pageLocale))
+    .map((t) => [localizedSlug(t.slug, undefined), t])
+);
+
+const glossary = await Promise.all(
+  englishTerms.map(async (enTerm) => {
+    const term = terms[enTerm.slug.substring(3)];
+
+    if (term) {
+      const { Content } = await term.render();
+      return {
+        headingId: githubSlug(`${term.data.name} ${enTerm.data.name}`),
+        english: enTerm.data.name,
+        localized: term.data.name,
+        Content,
+      };
+    } else {
+      const { Content } = await enTerm.render();
+      return {
+        headingId: githubSlug(enTerm.data.name),
+        english: enTerm.data.name,
+        localized: null,
+        Content,
+      };
+    }
+  })
+);
+---
+
+<div>
+  <h2>TOC</h2>
+  <div>
+    This could become the real TOC after <a
+      href="https://github.com/withastro/starlight/pull/1175">starlight#1175</a
+    > lands in main.
+  </div>
+  <div>
+    <ul>
+      {
+        glossary.map(({ headingId, english, localized }) => (
+          <li>
+            <a href={`#${headingId}`}>{localized || english}</a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</div>
+
+<hr />
+
+{
+  glossary.map(({ headingId, english, localized, Content }) => (
+    <>
+      {localized ? (
+        <h2 id={headingId}>
+          {localized} <span style="font-size: .8em;">({english})</span>{" "}
+        </h2>
+      ) : (
+        <h2 id={headingId}>{english}</h2>
+      )}
+      <Content />
+    </>
+  ))
+}
